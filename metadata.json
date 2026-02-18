@@ -1,0 +1,5 @@
+{
+  "name": "SWG Grid Dispatch EMS",
+  "description": "A mission-critical industrial Energy Management System (EMS) dashboard for utility-scale grid dispatch and BESS operations, featuring real-time telemetry, unit dispatch controls, and sequence logging.",
+  "requestFramePermissions": []
+}
