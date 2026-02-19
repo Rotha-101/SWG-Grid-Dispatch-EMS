@@ -49,7 +49,7 @@ const SequenceLog: React.FC<SequenceLogProps> = ({ units, lastCommitTime, totalP
   };
 
   return (
-    <div className="glass-card rounded-xl flex flex-col min-h-[450px] border border-white/5 transition-all">
+    <div className="glass-card rounded-xl flex flex-col border border-white/5 transition-all overflow-hidden">
       <div className="p-4 border-b border-white/5 flex items-center justify-between bg-black/20">
         <div className="flex items-center gap-2">
           <FileText size={16} className="text-blue-400" />
@@ -67,25 +67,25 @@ const SequenceLog: React.FC<SequenceLogProps> = ({ units, lastCommitTime, totalP
         </button>
       </div>
 
-      <div className="flex-1 p-2 bg-black/40 overflow-hidden">
+      <div className="flex-1 bg-black/40">
         <textarea
           ref={textareaRef}
           value={logContent}
           onChange={(e) => setLogContent(e.target.value)}
           spellCheck={false}
-          className="w-full bg-transparent border-none outline-none resize-none font-mono-custom text-[11px] leading-relaxed text-slate-300 p-4 focus:ring-0 selection:bg-blue-500/30 overflow-hidden"
+          className="w-full bg-transparent border-none outline-none resize-none font-mono-custom text-[11px] leading-relaxed text-slate-300 p-4 pb-0 focus:ring-0 selection:bg-blue-500/30 overflow-hidden"
           placeholder="DISPATCH SEQUENCE READY..."
         />
-      </div>
-
-      <div className="p-4 bg-black/20 border-t border-white/5 mt-auto">
-        <button 
-          onClick={copyToClipboard}
-          className="w-full flex items-center justify-center gap-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg text-xs tracking-widest transition-all active:scale-[0.98] shadow-lg shadow-indigo-900/20 uppercase border border-white/10"
-        >
-          <Copy size={16} />
-          COPY DISPATCH TEXT
-        </button>
+        
+        <div className="p-4 pt-4">
+          <button 
+            onClick={copyToClipboard}
+            className="w-full flex items-center justify-center gap-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-lg text-xs tracking-widest transition-all active:scale-[0.98] shadow-lg shadow-indigo-900/20 uppercase border border-white/10"
+          >
+            <Copy size={16} />
+            COPY DISPATCH TEXT
+          </button>
+        </div>
       </div>
     </div>
   );

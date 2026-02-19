@@ -6,7 +6,6 @@ export interface UnitData {
   activeMW: number;
   reacMVAR: number;
   soc: number;
-  battLvl: number;
   enabled?: boolean;
 }
 
