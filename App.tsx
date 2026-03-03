@@ -24,9 +24,9 @@ const WEIGHTS: Record<string, number> = {
 };
 
 const INITIAL_UNITS: UnitData[] = [
-  { id: 'SWG01', name: 'SWG_UNIT_01', badgeColor: '#10b981', activeMW: 0, reacMVAR: 0, soc: 0, enabled: true },
-  { id: 'SWG02', name: 'SWG_UNIT_02', badgeColor: '#8b5cf6', activeMW: 0, reacMVAR: 0, soc: 0, enabled: true },
-  { id: 'SWG03', name: 'SWG_UNIT_03', badgeColor: '#f59e0b', activeMW: 0, reacMVAR: 0, soc: 0, enabled: true },
+  { id: 'SWG01', name: 'SWG_UNIT_01', badgeColor: '#10b981', activeMW: 0, reacMVAR: 0, soc: 95, cRate: 0.435374, soh: 1.0, pLimit: 136, originalP: 0, limitedP: 0, enabled: true },
+  { id: 'SWG02', name: 'SWG_UNIT_02', badgeColor: '#8b5cf6', activeMW: 0, reacMVAR: 0, soc: 95, cRate: 0.272108, soh: 1.0, pLimit: 82, originalP: 0, limitedP: 0, enabled: true },
+  { id: 'SWG03', name: 'SWG_UNIT_03', badgeColor: '#f59e0b', activeMW: 0, reacMVAR: 0, soc: 95, cRate: 0.292517, soh: 1.0, pLimit: 82, originalP: 0, limitedP: 0, enabled: true },
 ];
 
 const App: React.FC = () => {
@@ -34,6 +34,9 @@ const App: React.FC = () => {
   const [lastCommitTime, setLastCommitTime] = useState<string>('');
   const [totalP, setTotalP] = useState<number | string>(0);
   const [totalQ, setTotalQ] = useState<number | string>(0);
+  const [socMin, setSocMin] = useState<number>(5);
+  const [socMax, setSocMax] = useState<number>(95);
+  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
 
   const [history, setHistory] = useState<DispatchEntry[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -50,65 +53,187 @@ const App: React.FC = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
   }, [history]);
 
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   const swg3Enabled = units.find(u => u.id === 'SWG03')?.enabled ?? true;
 
   // --- GLOBAL DISTRIBUTION (When Total Setpoint changes) ---
-  const distributeTotalToUnits = (p: number, q: number, s3Enabled: boolean) => {
+  const distributeTotalToUnits = (p: number, q: number, s3Enabled: boolean, currentUnits: UnitData[] = units, currentSocMin: number = socMin, currentSocMax: number = socMax) => {
     setUnits(prev => {
-      let s1P = 0, s2P = 0, s3P = 0;
-      let s1Q = 0, s2Q = 0, s3Q = 0;
+      const activeUnits = currentUnits.filter(u => u.id !== 'SWG03' || s3Enabled);
+      
+      // --- ACTIVE POWER (P) LOGIC (BESS Allocation) ---
+      let newUnits = [...prev];
+      
+      // Step 1: Mode
+      const isDischarge = p > 0;
+      const isCharge = p < 0;
+      
+      // Step 2: Compute Weights
+      let totalWeight = 0;
+      const weights: Record<string, number> = {};
+      
+      activeUnits.forEach(u => {
+        let w = 0;
+        if (isDischarge) {
+          const margin = u.soc - currentSocMin;
+          if (margin > 0) w = margin * u.soh * u.cRate;
+        } else if (isCharge) {
+          const margin = currentSocMax - u.soc;
+          if (margin > 0) w = margin * u.soh * u.cRate;
+        }
+        weights[u.id] = w;
+        totalWeight += w;
+      });
+      
+      // Step 3: Original Allocation
+      const originalAlloc: Record<string, number> = {};
+      const limitedAlloc: Record<string, number> = {};
+      activeUnits.forEach(u => {
+        originalAlloc[u.id] = 0;
+        limitedAlloc[u.id] = 0;
+      });
+      
+      const pAbs = Math.abs(p);
+      const pSign = p < 0 ? -1 : 1;
 
-      // --- ACTIVE POWER (P) LOGIC ---
-      if (s3Enabled) {
-        s2P = Math.round(p * WEIGHTS.SWG02);
-        s3P = Math.round(p * WEIGHTS.SWG03);
-        s1P = p - (s2P + s3P); 
+      if (pAbs > 0 && pAbs <= 10) {
+        let s1P = 0, s2P = 0, s3P = 0;
+        if (pAbs <= 5) {
+          s1P = p;
+        } else {
+          s1P = 5 * pSign;
+          s2P = (pAbs - 5) * pSign;
+        }
+        
+        if (activeUnits.find(u => u.id === 'SWG01')) {
+          originalAlloc['SWG01'] = s1P;
+          limitedAlloc['SWG01'] = s1P;
+        }
+        if (activeUnits.find(u => u.id === 'SWG02')) {
+          originalAlloc['SWG02'] = s2P;
+          limitedAlloc['SWG02'] = s2P;
+        }
+        if (activeUnits.find(u => u.id === 'SWG03')) {
+          originalAlloc['SWG03'] = s3P;
+          limitedAlloc['SWG03'] = s3P;
+        }
       } else {
-        s2P = Math.round(p * 0.50);
-        s3P = 0;
-        s1P = p - s2P;
+        activeUnits.forEach(u => {
+          if (p === 0 || totalWeight === 0) {
+            originalAlloc[u.id] = 0;
+          } else {
+            originalAlloc[u.id] = p * (weights[u.id] / totalWeight);
+          }
+        });
+        
+        // Step 4 & 5: Apply Limits and Redistribute
+        if (p !== 0 && totalWeight > 0) {
+          let remainingP = p;
+          let activePool = [...activeUnits];
+          let currentWeights = { ...weights };
+          
+          // Iterative redistribution
+          let iterationCount = 0;
+          while (Math.abs(remainingP) > 0.001 && activePool.length > 0 && iterationCount < 10) {
+            iterationCount++;
+            let poolWeight = activePool.reduce((sum, u) => sum + currentWeights[u.id], 0);
+            
+            if (poolWeight === 0) break;
+            
+            let nextPool: UnitData[] = [];
+            let nextRemainingP = 0;
+            
+            for (const u of activePool) {
+              const share = remainingP * (currentWeights[u.id] / poolWeight);
+              const proposedTotal = limitedAlloc[u.id] + share;
+              
+              // Check limits based on absolute value
+              if (Math.abs(proposedTotal) > u.pLimit) {
+                const clampedVal = proposedTotal > 0 ? u.pLimit : -u.pLimit;
+                const actualAdded = clampedVal - limitedAlloc[u.id];
+                limitedAlloc[u.id] = clampedVal;
+                nextRemainingP += (share - actualAdded);
+                currentWeights[u.id] = 0; // Remove from pool
+              } else {
+                limitedAlloc[u.id] = proposedTotal;
+                nextPool.push(u);
+              }
+            }
+            
+            remainingP = nextRemainingP;
+            activePool = nextPool;
+          }
+        }
+        
+        // Integer Dispatch Rule
+        let totalLimited = 0;
+        activeUnits.forEach(u => {
+          limitedAlloc[u.id] = Math.round(limitedAlloc[u.id]);
+          totalLimited += limitedAlloc[u.id];
+        });
+        
+        // Slack correction
+        const diff = p - totalLimited;
+        if (diff !== 0 && activeUnits.length > 0) {
+          // Find a unit that can take the slack without violating limits
+          for (const u of activeUnits) {
+            const proposed = limitedAlloc[u.id] + diff;
+            if (Math.abs(proposed) <= u.pLimit) {
+              limitedAlloc[u.id] = proposed;
+              break;
+            }
+          }
+        }
       }
 
       // --- REACTIVE POWER (Q) LOGIC ---
+      let s1Q = 0, s2Q = 0, s3Q = 0;
       const qAbs = Math.abs(q);
       const qSign = q < 0 ? -1 : 1;
 
       if (s3Enabled) {
         if (qAbs <= 5) {
-          // Tier 1: 0 to +-5
-          s1Q = q;
-          s2Q = 0;
-          s3Q = 0;
+          s1Q = q; s2Q = 0; s3Q = 0;
         } else if (qAbs <= 10) {
-          // Tier 2: +-5 to +-10
-          s1Q = 5 * qSign;
-          s2Q = (qAbs - 5) * qSign;
-          s3Q = 0;
+          s1Q = 5 * qSign; s2Q = (qAbs - 5) * qSign; s3Q = 0;
         } else {
-          // Tier 3: > +-10
-          // SWG2 and SWG3 take 25% each, SWG1 is the residual
           s2Q = Math.round(q * 0.25);
           s3Q = Math.round(q * 0.25);
           s1Q = q - (s2Q + s3Q);
         }
       } else {
-        // SWG3 Disabled Case
         if (qAbs <= 5) {
-          s1Q = q;
-          s2Q = 0;
-          s3Q = 0;
+          s1Q = q; s2Q = 0; s3Q = 0;
         } else {
           s2Q = Math.round(q * 0.50);
-          s1Q = q - s2Q;
-          s3Q = 0;
+          s1Q = q - s2Q; s3Q = 0;
         }
       }
 
       return prev.map(u => {
-        if (u.id === 'SWG01') return { ...u, activeMW: s1P, reacMVAR: s1Q };
-        if (u.id === 'SWG02') return { ...u, activeMW: s2P, reacMVAR: s2Q };
-        if (u.id === 'SWG03') return { ...u, activeMW: s3P, reacMVAR: s3Q };
-        return u;
+        if (!s3Enabled && u.id === 'SWG03') {
+          return { ...u, activeMW: 0, reacMVAR: 0, originalP: 0, limitedP: 0 };
+        }
+        const newQ = u.id === 'SWG01' ? s1Q : u.id === 'SWG02' ? s2Q : s3Q;
+        return { 
+          ...u, 
+          activeMW: limitedAlloc[u.id] || 0, 
+          reacMVAR: newQ,
+          originalP: originalAlloc[u.id] || 0,
+          limitedP: limitedAlloc[u.id] || 0
+        };
       });
     });
   };
@@ -131,55 +256,87 @@ const App: React.FC = () => {
     }
   };
 
+  const handleSocMinUpdate = (val: string) => {
+    const num = parseInt(val);
+    if (!isNaN(num)) {
+      setSocMin(num);
+      distributeTotalToUnits(Number(totalP) || 0, Number(totalQ) || 0, swg3Enabled, units, num, socMax);
+    }
+  };
+
+  const handleSocMaxUpdate = (val: string) => {
+    const num = parseInt(val);
+    if (!isNaN(num)) {
+      setSocMax(num);
+      distributeTotalToUnits(Number(totalP) || 0, Number(totalQ) || 0, swg3Enabled, units, socMin, num);
+    }
+  };
+
   const toggleSWG3 = () => {
     const newState = !swg3Enabled;
-    setUnits(prev => prev.map(u => u.id === 'SWG03' ? { ...u, enabled: newState } : u));
-    distributeTotalToUnits(Number(totalP) || 0, Number(totalQ) || 0, newState);
+    let nextUnits: UnitData[] = [];
+    setUnits(prev => {
+      nextUnits = prev.map(u => {
+        if (u.id === 'SWG03') return { ...u, enabled: newState };
+        if (!newState) {
+          if (u.id === 'SWG01' || u.id === 'SWG02') return { ...u, cRate: 0.5 };
+        } else {
+          if (u.id === 'SWG01') return { ...u, cRate: 0.435374 };
+          if (u.id === 'SWG02') return { ...u, cRate: 0.272108 };
+        }
+        return u;
+      });
+      return nextUnits;
+    });
+    setTimeout(() => distributeTotalToUnits(Number(totalP) || 0, Number(totalQ) || 0, newState, nextUnits, socMin, socMax), 0);
   };
 
   const handleUnitUpdate = (id: string, field: keyof UnitData, value: number) => {
     setUnits(prev => {
-      if (field === 'soc') {
-        return prev.map(u => u.id === id ? { ...u, [field]: value } : u);
+      const nextUnits = prev.map(u => u.id === id ? { ...u, [field]: value } : u);
+      
+      // If SOC, C-rate, or SOH changes, we need to re-run distribution
+      if (field === 'soc' || field === 'cRate' || field === 'soh') {
+        // We can't call distributeTotalToUnits directly here because it uses setUnits,
+        // so we'll just return the updated units and let a useEffect handle it,
+        // OR we can just compute the new distribution inline.
+        // For simplicity, let's just trigger a re-distribution by calling it with the new units.
+        setTimeout(() => distributeTotalToUnits(Number(totalP) || 0, Number(totalQ) || 0, swg3Enabled, nextUnits, socMin, socMax), 0);
+        return nextUnits;
       }
 
+      // If manual P/Q update (only allowed if total is 0)
       const isP = field === 'activeMW';
       const masterTotalRaw = isP ? totalP : totalQ;
       const masterTotal = Number(masterTotalRaw) || 0;
       
-      // If Global Total is zero, allow independent manual inputs for each SWG
       if (masterTotal === 0) {
-        return prev.map(u => u.id === id ? { ...u, [field]: value } : u);
+        return nextUnits;
       }
 
-      // Target Lock Mode: Maintain constant sum
-      const residualPool = masterTotal - value;
-      const others = prev.filter(u => u.id !== id && u.enabled !== false);
-      
-      if (others.length === 0) {
-        return prev.map(u => u.id === id ? { ...u, [field]: value } : u);
+      // Target Lock Mode for Q (P is handled by BESS logic now, but we keep this for Q)
+      if (!isP) {
+        const residualPool = masterTotal - value;
+        const others = nextUnits.filter(u => u.id !== id && u.enabled !== false);
+        
+        if (others.length === 0) return nextUnits;
+
+        const totalWeightOfOthers = others.reduce((acc, u) => acc + (WEIGHTS[u.id] || 0.33), 0);
+        let distributedAmount = 0;
+
+        for (let i = 0; i < others.length - 1; i++) {
+          const u = others[i];
+          const unitWeight = WEIGHTS[u.id] || 0.33;
+          const share = Math.round(residualPool * (unitWeight / totalWeightOfOthers));
+          const idx = nextUnits.findIndex(nu => nu.id === u.id);
+          nextUnits[idx] = { ...nextUnits[idx], [field]: share };
+          distributedAmount += share;
+        }
+
+        const lastUnit = others[others.length - 1];
+        const lastIdx = nextUnits.findIndex(nu => nu.id === lastUnit.id);
+        nextUnits[lastIdx] = { ...nextUnits[lastIdx], [field]: residualPool - distributedAmount };
       }
-
-      // Use P-Weights for redistribution logic to ensure proportional sharing
-      const totalWeightOfOthers = others.reduce((acc, u) => acc + (WEIGHTS[u.id] || 0.33), 0);
-      const nextUnits = [...prev];
-      let distributedAmount = 0;
-
-      for (let i = 0; i < others.length - 1; i++) {
-        const u = others[i];
-        const unitWeight = WEIGHTS[u.id] || 0.33;
-        const share = Math.round(residualPool * (unitWeight / totalWeightOfOthers));
-        const idx = nextUnits.findIndex(nu => nu.id === u.id);
-        nextUnits[idx] = { ...nextUnits[idx], [field]: share };
-        distributedAmount += share;
-      }
-
-      const lastUnit = others[others.length - 1];
-      const lastIdx = nextUnits.findIndex(nu => nu.id === lastUnit.id);
-      nextUnits[lastIdx] = { ...nextUnits[lastIdx], [field]: residualPool - distributedAmount };
-
-      const targetIdx = nextUnits.findIndex(nu => nu.id === id);
-      nextUnits[targetIdx] = { ...nextUnits[targetIdx], [field]: value };
 
       return nextUnits;
     });
@@ -226,7 +383,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#06070a] flex flex-col text-slate-300">
-      <Header onStoreClick={commitSequence} historyCount={history.length} />
+      <Header onStoreClick={commitSequence} historyCount={history.length} isOnline={isOnline} />
 
       <main className="flex-1 p-6 space-y-6">
         <div className="flex items-center justify-between">
@@ -245,18 +402,18 @@ const App: React.FC = () => {
               <div>
                 <h2 className="text-xs font-bold text-white tracking-widest uppercase">TOTAL_DISPATCH_SETPOINT</h2>
                 <p className="text-[9px] text-slate-500 uppercase font-mono-custom">
-                  {Number(totalP) === 0 && Number(totalQ) === 0 ? 'MANUAL_BUILD_MODE' : 'TARGET_LOCK_ACTIVE'}
+                  {Number(totalP) > 0 ? 'DISCHARGE_MODE' : Number(totalP) < 0 ? 'CHARGE_MODE' : 'IDLE_MODE'}
                 </p>
               </div>
             </div>
 
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-4 w-full">
               {/* TOTAL ACTIVE POWER P(MW) */}
               <div className="relative group/control">
-                <label className="absolute -top-2 left-2 px-1 bg-[#0f1218] text-[8px] font-bold text-blue-400 uppercase tracking-widest z-10">TOTAL ACTIVE POWER P(MW)</label>
+                <label className="absolute -top-2 left-2 px-1 bg-[#0f1218] text-[8px] font-bold text-blue-400 uppercase tracking-widest z-10">Pset (MW)</label>
                 <div className="flex items-center bg-[#0a0c10] border border-blue-500/20 rounded-md overflow-hidden transition-all focus-within:border-blue-500/50">
                   <button 
-                    onClick={() => handleTotalPUpdate(Number(totalP) - 1)}
+                    onClick={() => handleTotalPUpdate(Number(totalP) - 10)}
                     className="h-12 w-10 flex items-center justify-center hover:bg-blue-500/10 text-blue-400 border-r border-blue-500/10 transition-colors active:scale-95"
                   >
                     <Minus size={14} strokeWidth={3} />
@@ -269,7 +426,7 @@ const App: React.FC = () => {
                     className="flex-1 bg-transparent py-3 px-2 text-xl font-bold font-mono-custom text-white outline-none text-center"
                   />
                   <button 
-                    onClick={() => handleTotalPUpdate(Number(totalP) + 1)}
+                    onClick={() => handleTotalPUpdate(Number(totalP) + 10)}
                     className="h-12 w-10 flex items-center justify-center hover:bg-blue-500/10 text-blue-400 border-l border-blue-500/10 transition-colors active:scale-95"
                   >
                     <Plus size={14} strokeWidth={3} />
@@ -303,6 +460,32 @@ const App: React.FC = () => {
                 </div>
               </div>
 
+              {/* SOC MIN */}
+              <div className="relative group/control">
+                <label className="absolute -top-2 left-2 px-1 bg-[#0f1218] text-[8px] font-bold text-emerald-400 uppercase tracking-widest z-10">SOCmin (%)</label>
+                <div className="flex items-center bg-[#0a0c10] border border-emerald-500/20 rounded-md overflow-hidden transition-all focus-within:border-emerald-500/50">
+                  <input 
+                    type="number"
+                    value={socMin}
+                    onChange={(e) => handleSocMinUpdate(e.target.value)}
+                    className="flex-1 bg-transparent py-3 px-2 text-xl font-bold font-mono-custom text-white outline-none text-center"
+                  />
+                </div>
+              </div>
+
+              {/* SOC MAX */}
+              <div className="relative group/control">
+                <label className="absolute -top-2 left-2 px-1 bg-[#0f1218] text-[8px] font-bold text-emerald-400 uppercase tracking-widest z-10">SOCmax (%)</label>
+                <div className="flex items-center bg-[#0a0c10] border border-emerald-500/20 rounded-md overflow-hidden transition-all focus-within:border-emerald-500/50">
+                  <input 
+                    type="number"
+                    value={socMax}
+                    onChange={(e) => handleSocMaxUpdate(e.target.value)}
+                    className="flex-1 bg-transparent py-3 px-2 text-xl font-bold font-mono-custom text-white outline-none text-center"
+                  />
+                </div>
+              </div>
+
               <div className="flex items-center justify-center bg-black/20 rounded border border-white/5 px-4 h-full">
                 <div className="flex items-center gap-4">
                    <span className={`text-[10px] font-bold tracking-widest uppercase transition-colors ${swg3Enabled ? 'text-slate-500' : 'text-amber-500 animate-pulse'}`}>
@@ -317,6 +500,53 @@ const App: React.FC = () => {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* ALLOCATION RESULTS PANEL */}
+        <div className="glass-card rounded-xl p-6 border-l-4 border-l-emerald-500">
+          <h2 className="text-sm font-bold text-white tracking-widest uppercase mb-4">BESS ALLOCATION RESULTS</h2>
+          
+          <div className="flex gap-8 mb-6">
+            <div>
+              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">TOTAL DISPATCHED POWER</p>
+              <p className="text-2xl font-mono-custom font-bold text-emerald-400">
+                {units.reduce((sum, u) => sum + (u.enabled !== false ? u.limitedP : 0), 0)} MW
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">POWER BALANCE</p>
+              <p className={`text-2xl font-mono-custom font-bold ${units.reduce((sum, u) => sum + (u.enabled !== false ? u.limitedP : 0), 0) === Number(totalP) ? 'text-emerald-400' : 'text-red-500'}`}>
+                {units.reduce((sum, u) => sum + (u.enabled !== false ? u.limitedP : 0), 0) === Number(totalP) ? 'EXACT' : 'NOT EXACT'}
+              </p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-white/10 text-[10px] text-slate-400 uppercase tracking-widest">
+                  <th className="py-2 px-4">Unit</th>
+                  <th className="py-2 px-4 text-right">Original P (MW)</th>
+                  <th className="py-2 px-4 text-right">Limited P (MW)</th>
+                  <th className="py-2 px-4 text-right">P Limit (MW)</th>
+                  <th className="py-2 px-4 text-right">Δ (Limited - Original)</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono-custom text-sm">
+                {units.map(u => (
+                  <tr key={u.id} className="border-b border-white/5 hover:bg-white/5">
+                    <td className="py-2 px-4 font-bold" style={{ color: u.badgeColor }}>{u.name}</td>
+                    <td className="py-2 px-4 text-right text-slate-300">{u.originalP.toFixed(2)}</td>
+                    <td className="py-2 px-4 text-right text-white font-bold">{u.limitedP}</td>
+                    <td className="py-2 px-4 text-right text-slate-500">{u.pLimit}</td>
+                    <td className={`py-2 px-4 text-right font-bold ${u.limitedP - u.originalP > 0.01 ? 'text-emerald-400' : u.limitedP - u.originalP < -0.01 ? 'text-red-400' : 'text-slate-500'}`}>
+                      {(u.limitedP - u.originalP).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -375,8 +605,8 @@ const App: React.FC = () => {
             ARCHIVE: {history.length} LOGS
           </span>
         </div>
-        <div className="text-blue-500 font-bold">
-          SYNC_ACTIVE
+        <div className={`font-bold ${isOnline ? 'text-blue-500' : 'text-red-500 animate-pulse'}`}>
+          {isOnline ? 'SYNC_ACTIVE' : 'OFFLINE_MODE'}
         </div>
       </footer>
     </div>

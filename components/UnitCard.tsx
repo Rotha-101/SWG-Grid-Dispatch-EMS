@@ -17,6 +17,8 @@ const UnitCard: React.FC<UnitCardProps> = ({ unit, onUpdate }) => {
   const [localP, setLocalP] = useState<string | number>(unit.activeMW);
   const [localQ, setLocalQ] = useState<string | number>(unit.reacMVAR);
   const [localSOC, setLocalSOC] = useState<string | number>(unit.soc);
+  const [localCRate, setLocalCRate] = useState<string | number>(unit.cRate);
+  const [localSOH, setLocalSOH] = useState<string | number>(unit.soh);
 
   // Sync local state when external props change (e.g. from balancing logic)
   useEffect(() => {
@@ -31,16 +33,26 @@ const UnitCard: React.FC<UnitCardProps> = ({ unit, onUpdate }) => {
     setLocalSOC(unit.soc);
   }, [unit.soc]);
 
-  const handleInputChange = (field: 'activeMW' | 'reacMVAR' | 'soc', val: string) => {
+  useEffect(() => {
+    setLocalCRate(unit.cRate);
+  }, [unit.cRate]);
+
+  useEffect(() => {
+    setLocalSOH(unit.soh);
+  }, [unit.soh]);
+
+  const handleInputChange = (field: 'activeMW' | 'reacMVAR' | 'soc' | 'cRate' | 'soh', val: string) => {
     // 1. Update local UI state immediately
     if (field === 'activeMW') setLocalP(val);
     if (field === 'reacMVAR') setLocalQ(val);
     if (field === 'soc') setLocalSOC(val);
+    if (field === 'cRate') setLocalCRate(val);
+    if (field === 'soh') setLocalSOH(val);
 
     // 2. Try to propagate numeric value to parent
     if (val === '' || val === '-') return;
     
-    let num = parseInt(val);
+    let num = parseFloat(val);
     if (isNaN(num)) return;
 
     // Specific logic for SOC: Clamp 0-100
@@ -53,11 +65,13 @@ const UnitCard: React.FC<UnitCardProps> = ({ unit, onUpdate }) => {
     onUpdate(unit.id, field, num);
   };
 
-  const handleBlur = (field: 'activeMW' | 'reacMVAR' | 'soc') => {
+  const handleBlur = (field: 'activeMW' | 'reacMVAR' | 'soc' | 'cRate' | 'soh') => {
     // On blur, if state is invalid, reset to current unit prop
     if (field === 'activeMW' && (localP === '' || localP === '-')) setLocalP(unit.activeMW);
     if (field === 'reacMVAR' && (localQ === '' || localQ === '-')) setLocalQ(unit.reacMVAR);
     if (field === 'soc' && (localSOC === '' || localSOC === '-')) setLocalSOC(unit.soc);
+    if (field === 'cRate' && (localCRate === '' || localCRate === '-')) setLocalCRate(unit.cRate);
+    if (field === 'soh' && (localSOH === '' || localSOH === '-')) setLocalSOH(unit.soh);
   };
 
   return (
@@ -97,6 +111,28 @@ const UnitCard: React.FC<UnitCardProps> = ({ unit, onUpdate }) => {
           />
         </div>
         <div>
+          <label className="block text-[8px] font-bold text-slate-500 uppercase mb-2 tracking-widest">C-Rate</label>
+          <input
+            type="text"
+            disabled={isDisabled}
+            value={localCRate}
+            onChange={(e) => handleInputChange('cRate', e.target.value)}
+            onBlur={() => handleBlur('cRate')}
+            className="w-full bg-[#0a0c10] border border-white/5 rounded py-3 text-center text-xl font-bold font-mono-custom text-white outline-none focus:ring-1 focus:ring-cyan-500/30 transition-all disabled:text-slate-600"
+          />
+        </div>
+        <div>
+          <label className="block text-[8px] font-bold text-slate-500 uppercase mb-2 tracking-widest">SOH</label>
+          <input
+            type="text"
+            disabled={isDisabled}
+            value={localSOH}
+            onChange={(e) => handleInputChange('soh', e.target.value)}
+            onBlur={() => handleBlur('soh')}
+            className="w-full bg-[#0a0c10] border border-white/5 rounded py-3 text-center text-xl font-bold font-mono-custom text-white outline-none focus:ring-1 focus:ring-emerald-500/30 transition-all disabled:text-slate-600"
+          />
+        </div>
+        <div>
           <label className="block text-[8px] font-bold text-slate-500 uppercase mb-2 tracking-widest">Q (MVAR)</label>
           <input
             type="text"
@@ -107,7 +143,7 @@ const UnitCard: React.FC<UnitCardProps> = ({ unit, onUpdate }) => {
             className="w-full bg-[#0a0c10] border border-white/5 rounded py-3 text-center text-xl font-bold font-mono-custom text-white outline-none focus:ring-1 focus:ring-cyan-500/30 transition-all disabled:text-slate-600"
           />
         </div>
-        <div>
+        <div className="col-span-2">
           <label className="block text-[8px] font-bold text-slate-500 uppercase mb-2 tracking-widest">SOC (%)</label>
           <input
             type="text"

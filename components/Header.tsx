@@ -1,13 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
-import { Shield, Settings, Database, Wifi, Clock } from 'lucide-react';
+import { Shield, Settings, Database, Wifi, WifiOff, Clock } from 'lucide-react';
 
 interface HeaderProps {
   onStoreClick?: () => void;
   historyCount?: number;
+  isOnline?: boolean;
 }
 
-const Header: React.FC<HeaderProps> = ({ onStoreClick, historyCount = 0 }) => {
+const Header: React.FC<HeaderProps> = ({ onStoreClick, historyCount = 0, isOnline = true }) => {
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -49,9 +50,11 @@ const Header: React.FC<HeaderProps> = ({ onStoreClick, historyCount = 0 }) => {
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
             <span className="text-[10px] text-emerald-500 font-bold uppercase tracking-wider">GRID_NOMINAL</span>
           </div>
-          <div className="px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded flex items-center gap-2">
-            <Wifi size={10} className="text-blue-400" />
-            <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider">Telemetry_Link</span>
+          <div className={`px-3 py-1 border rounded flex items-center gap-2 ${isOnline ? 'bg-blue-500/10 border-blue-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
+            {isOnline ? <Wifi size={10} className="text-blue-400" /> : <WifiOff size={10} className="text-red-400" />}
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${isOnline ? 'text-blue-400' : 'text-red-400'}`}>
+              {isOnline ? 'Telemetry_Link' : 'Link_Offline'}
+            </span>
           </div>
         </div>
       </div>

@@ -6,6 +6,11 @@ export interface UnitData {
   activeMW: number;
   reacMVAR: number;
   soc: number;
+  cRate: number;
+  soh: number;
+  pLimit: number;
+  originalP: number;
+  limitedP: number;
   enabled?: boolean;
 }
 
