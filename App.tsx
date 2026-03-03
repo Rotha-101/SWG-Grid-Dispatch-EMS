@@ -34,8 +34,8 @@ const App: React.FC = () => {
   const [lastCommitTime, setLastCommitTime] = useState<string>('');
   const [totalP, setTotalP] = useState<number | string>(0);
   const [totalQ, setTotalQ] = useState<number | string>(0);
-  const [socMin, setSocMin] = useState<number>(5);
-  const [socMax, setSocMax] = useState<number>(95);
+  const [socMin, setSocMin] = useState<number | string>(5);
+  const [socMax, setSocMax] = useState<number | string>(95);
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
 
   const [history, setHistory] = useState<DispatchEntry[]>(() => {
@@ -96,6 +96,16 @@ const App: React.FC = () => {
         weights[u.id] = w;
         totalWeight += w;
       });
+
+      // Fallback: If totalWeight is 0 (e.g., all batteries are at SOCmax and trying to charge),
+      // distribute purely based on C-Rate so the setpoints still populate.
+      if (totalWeight === 0 && p !== 0) {
+        activeUnits.forEach(u => {
+          const w = u.cRate;
+          weights[u.id] = w;
+          totalWeight += w;
+        });
+      }
       
       // Step 3: Original Allocation
       const originalAlloc: Record<string, number> = {};
@@ -177,6 +187,10 @@ const App: React.FC = () => {
           }
         }
         
+        // Calculate sum before rounding to know if we fully allocated
+        let sumUnrounded = 0;
+        activeUnits.forEach(u => sumUnrounded += limitedAlloc[u.id]);
+
         // Integer Dispatch Rule
         let totalLimited = 0;
         activeUnits.forEach(u => {
@@ -184,15 +198,17 @@ const App: React.FC = () => {
           totalLimited += limitedAlloc[u.id];
         });
         
-        // Slack correction
-        const diff = p - totalLimited;
-        if (diff !== 0 && activeUnits.length > 0) {
-          // Find a unit that can take the slack without violating limits
-          for (const u of activeUnits) {
-            const proposed = limitedAlloc[u.id] + diff;
-            if (Math.abs(proposed) <= u.pLimit) {
-              limitedAlloc[u.id] = proposed;
-              break;
+        // Slack correction (only apply if we successfully allocated everything before rounding)
+        if (Math.abs(sumUnrounded - p) < 0.1) {
+          const diff = p - totalLimited;
+          if (diff !== 0 && activeUnits.length > 0) {
+            // Find a unit that can take the slack without violating limits
+            for (const u of activeUnits) {
+              const proposed = limitedAlloc[u.id] + diff;
+              if (Math.abs(proposed) <= u.pLimit) {
+                limitedAlloc[u.id] = proposed;
+                break;
+              }
             }
           }
         }
@@ -239,36 +255,42 @@ const App: React.FC = () => {
   };
 
   const handleTotalPUpdate = (val: any) => {
-    if (val === '' || val === '-') { setTotalP(val); return; }
-    const numericVal = parseInt(val);
+    if (val === '' || val === '-' || val === '.' || val === '-.') { setTotalP(val); return; }
+    let numericVal = parseFloat(val);
     if (!isNaN(numericVal)) {
-      setTotalP(numericVal);
+      if (numericVal > 300) { setTotalP(300); numericVal = 300; }
+      else if (numericVal < -300) { setTotalP(-300); numericVal = -300; }
+      else { setTotalP(val); }
       distributeTotalToUnits(numericVal, Number(totalQ) || 0, swg3Enabled);
     }
   };
 
   const handleTotalQUpdate = (val: any) => {
-    if (val === '' || val === '-') { setTotalQ(val); return; }
-    const numericVal = parseInt(val);
+    if (val === '' || val === '-' || val === '.' || val === '-.') { setTotalQ(val); return; }
+    let numericVal = parseFloat(val);
     if (!isNaN(numericVal)) {
-      setTotalQ(numericVal);
+      if (numericVal > 300) { setTotalQ(300); numericVal = 300; }
+      else if (numericVal < -300) { setTotalQ(-300); numericVal = -300; }
+      else { setTotalQ(val); }
       distributeTotalToUnits(Number(totalP) || 0, numericVal, swg3Enabled);
     }
   };
 
   const handleSocMinUpdate = (val: string) => {
-    const num = parseInt(val);
+    if (val === '' || val === '.') { setSocMin(val); return; }
+    const num = parseFloat(val);
     if (!isNaN(num)) {
-      setSocMin(num);
-      distributeTotalToUnits(Number(totalP) || 0, Number(totalQ) || 0, swg3Enabled, units, num, socMax);
+      setSocMin(val);
+      distributeTotalToUnits(Number(totalP) || 0, Number(totalQ) || 0, swg3Enabled, units, num, Number(socMax) || 0);
     }
   };
 
   const handleSocMaxUpdate = (val: string) => {
-    const num = parseInt(val);
+    if (val === '' || val === '.') { setSocMax(val); return; }
+    const num = parseFloat(val);
     if (!isNaN(num)) {
-      setSocMax(num);
-      distributeTotalToUnits(Number(totalP) || 0, Number(totalQ) || 0, swg3Enabled, units, socMin, num);
+      setSocMax(val);
+      distributeTotalToUnits(Number(totalP) || 0, Number(totalQ) || 0, swg3Enabled, units, Number(socMin) || 0, num);
     }
   };
 
@@ -425,7 +447,8 @@ const App: React.FC = () => {
                     <Minus size={14} strokeWidth={3} />
                   </button>
                   <input 
-                    type="text"
+                    type="number"
+                    step="any"
                     value={totalP}
                     onChange={(e) => handleTotalPUpdate(e.target.value)}
                     onBlur={() => { if (totalP === '-' || totalP === '') setTotalP(0); }}
@@ -451,7 +474,8 @@ const App: React.FC = () => {
                     <Minus size={14} strokeWidth={3} />
                   </button>
                   <input 
-                    type="text"
+                    type="number"
+                    step="any"
                     value={totalQ}
                     onChange={(e) => handleTotalQUpdate(e.target.value)}
                     onBlur={() => { if (totalQ === '-' || totalQ === '') setTotalQ(0); }}
@@ -472,6 +496,7 @@ const App: React.FC = () => {
                 <div className="flex items-center bg-[#0a0c10] border border-emerald-500/20 rounded-md overflow-hidden transition-all focus-within:border-emerald-500/50">
                   <input 
                     type="number"
+                    step="any"
                     value={socMin}
                     onChange={(e) => handleSocMinUpdate(e.target.value)}
                     className="flex-1 bg-transparent py-3 px-2 text-xl font-bold font-mono-custom text-white outline-none text-center"
@@ -485,6 +510,7 @@ const App: React.FC = () => {
                 <div className="flex items-center bg-[#0a0c10] border border-emerald-500/20 rounded-md overflow-hidden transition-all focus-within:border-emerald-500/50">
                   <input 
                     type="number"
+                    step="any"
                     value={socMax}
                     onChange={(e) => handleSocMaxUpdate(e.target.value)}
                     className="flex-1 bg-transparent py-3 px-2 text-xl font-bold font-mono-custom text-white outline-none text-center"
@@ -515,9 +541,15 @@ const App: React.FC = () => {
           
           <div className="flex gap-8 mb-6">
             <div>
-              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">TOTAL DISPATCHED POWER</p>
+              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">TOTAL ACTIVE POWER</p>
               <p className="text-2xl font-mono-custom font-bold text-emerald-400">
                 {units.reduce((sum, u) => sum + (u.enabled !== false ? u.limitedP : 0), 0)} MW
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">TOTAL REACTIVE POWER</p>
+              <p className="text-2xl font-mono-custom font-bold text-cyan-400">
+                {units.reduce((sum, u) => sum + (u.enabled !== false ? u.reacMVAR : 0), 0)} MVAR
               </p>
             </div>
             <div>
@@ -537,6 +569,7 @@ const App: React.FC = () => {
                   <th className="py-2 px-4 text-right">Limited P (MW)</th>
                   <th className="py-2 px-4 text-right">P Limit (MW)</th>
                   <th className="py-2 px-4 text-right">Δ (Limited - Original)</th>
+                  <th className="py-2 px-4 text-right">Q (MVAR)</th>
                 </tr>
               </thead>
               <tbody className="font-mono-custom text-sm">
@@ -549,6 +582,7 @@ const App: React.FC = () => {
                     <td className={`py-2 px-4 text-right font-bold ${u.limitedP - u.originalP > 0.01 ? 'text-emerald-400' : u.limitedP - u.originalP < -0.01 ? 'text-red-400' : 'text-slate-500'}`}>
                       {(u.limitedP - u.originalP).toFixed(2)}
                     </td>
+                    <td className="py-2 px-4 text-right text-cyan-400 font-bold">{u.reacMVAR}</td>
                   </tr>
                 ))}
               </tbody>

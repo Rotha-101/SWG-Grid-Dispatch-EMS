@@ -22,23 +22,23 @@ const UnitCard: React.FC<UnitCardProps> = ({ unit, onUpdate }) => {
 
   // Sync local state when external props change (e.g. from balancing logic)
   useEffect(() => {
-    setLocalP(unit.activeMW);
+    if (parseFloat(String(localP)) !== unit.activeMW) setLocalP(unit.activeMW);
   }, [unit.activeMW]);
 
   useEffect(() => {
-    setLocalQ(unit.reacMVAR);
+    if (parseFloat(String(localQ)) !== unit.reacMVAR) setLocalQ(unit.reacMVAR);
   }, [unit.reacMVAR]);
 
   useEffect(() => {
-    setLocalSOC(unit.soc);
+    if (parseFloat(String(localSOC)) !== unit.soc) setLocalSOC(unit.soc);
   }, [unit.soc]);
 
   useEffect(() => {
-    setLocalCRate(unit.cRate);
+    if (parseFloat(String(localCRate)) !== unit.cRate) setLocalCRate(unit.cRate);
   }, [unit.cRate]);
 
   useEffect(() => {
-    setLocalSOH(unit.soh);
+    if (parseFloat(String(localSOH)) !== unit.soh) setLocalSOH(unit.soh);
   }, [unit.soh]);
 
   const handleInputChange = (field: 'activeMW' | 'reacMVAR' | 'soc' | 'cRate' | 'soh', val: string) => {
@@ -50,16 +50,15 @@ const UnitCard: React.FC<UnitCardProps> = ({ unit, onUpdate }) => {
     if (field === 'soh') setLocalSOH(val);
 
     // 2. Try to propagate numeric value to parent
-    if (val === '' || val === '-') return;
+    if (val === '' || val === '-' || val === '.' || val === '-.') return;
     
     let num = parseFloat(val);
     if (isNaN(num)) return;
 
     // Specific logic for SOC: Clamp 0-100
     if (field === 'soc') {
-      if (num < 0) num = 0;
-      if (num > 100) num = 100;
-      setLocalSOC(num); // Update local to clamped value
+      if (num < 0) { num = 0; setLocalSOC(0); }
+      if (num > 100) { num = 100; setLocalSOC(100); }
     }
 
     onUpdate(unit.id, field, num);
@@ -102,7 +101,8 @@ const UnitCard: React.FC<UnitCardProps> = ({ unit, onUpdate }) => {
         <div>
           <label className="block text-[8px] font-bold text-slate-500 uppercase mb-2 tracking-widest">P (MW)</label>
           <input
-            type="text"
+            type="number"
+            step="any"
             disabled={isDisabled}
             value={localP}
             onChange={(e) => handleInputChange('activeMW', e.target.value)}
@@ -113,7 +113,8 @@ const UnitCard: React.FC<UnitCardProps> = ({ unit, onUpdate }) => {
         <div>
           <label className="block text-[8px] font-bold text-slate-500 uppercase mb-2 tracking-widest">C-Rate</label>
           <input
-            type="text"
+            type="number"
+            step="any"
             disabled={isDisabled}
             value={localCRate}
             onChange={(e) => handleInputChange('cRate', e.target.value)}
@@ -124,7 +125,8 @@ const UnitCard: React.FC<UnitCardProps> = ({ unit, onUpdate }) => {
         <div>
           <label className="block text-[8px] font-bold text-slate-500 uppercase mb-2 tracking-widest">SOH</label>
           <input
-            type="text"
+            type="number"
+            step="any"
             disabled={isDisabled}
             value={localSOH}
             onChange={(e) => handleInputChange('soh', e.target.value)}
@@ -135,7 +137,8 @@ const UnitCard: React.FC<UnitCardProps> = ({ unit, onUpdate }) => {
         <div>
           <label className="block text-[8px] font-bold text-slate-500 uppercase mb-2 tracking-widest">Q (MVAR)</label>
           <input
-            type="text"
+            type="number"
+            step="any"
             disabled={isDisabled}
             value={localQ}
             onChange={(e) => handleInputChange('reacMVAR', e.target.value)}
@@ -146,7 +149,8 @@ const UnitCard: React.FC<UnitCardProps> = ({ unit, onUpdate }) => {
         <div className="col-span-2">
           <label className="block text-[8px] font-bold text-slate-500 uppercase mb-2 tracking-widest">SOC (%)</label>
           <input
-            type="text"
+            type="number"
+            step="any"
             value={localSOC}
             onChange={(e) => handleInputChange('soc', e.target.value)}
             onBlur={() => handleBlur('soc')}

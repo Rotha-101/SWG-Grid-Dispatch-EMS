@@ -195,9 +195,9 @@ const DispatchHistory: React.FC<DispatchHistoryProps> = ({ history, onDelete, on
                         <div className="flex justify-around font-bold gap-2">
                           {isEditing ? (
                             <>
-                              <input type="number" className="w-10 bg-black border border-white/10 rounded px-1 text-center text-white text-[10px]" value={data.units[unitId].active} onChange={(e) => updateTempValue(unitId, 'active', parseInt(e.target.value) || 0)} />
-                              <input type="number" className="w-10 bg-black border border-white/10 rounded px-1 text-center text-slate-500 text-[10px]" value={data.units[unitId].reac} onChange={(e) => updateTempValue(unitId, 'reac', parseInt(e.target.value) || 0)} />
-                              <input type="number" className="w-10 bg-black border border-white/10 rounded px-1 text-center text-blue-400 text-[10px]" value={data.units[unitId].soc} onChange={(e) => updateTempValue(unitId, 'soc', parseInt(e.target.value) || 0)} />
+                              <input type="number" step="any" className="w-10 bg-black border border-white/10 rounded px-1 text-center text-white text-[10px]" value={data.units[unitId].active} onChange={(e) => updateTempValue(unitId, 'active', parseFloat(e.target.value) || 0)} />
+                              <input type="number" step="any" className="w-10 bg-black border border-white/10 rounded px-1 text-center text-slate-500 text-[10px]" value={data.units[unitId].reac} onChange={(e) => updateTempValue(unitId, 'reac', parseFloat(e.target.value) || 0)} />
+                              <input type="number" step="any" className="w-10 bg-black border border-white/10 rounded px-1 text-center text-blue-400 text-[10px]" value={data.units[unitId].soc} onChange={(e) => updateTempValue(unitId, 'soc', parseFloat(e.target.value) || 0)} />
                             </>
                           ) : (
                             <>
