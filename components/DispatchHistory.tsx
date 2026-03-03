@@ -14,9 +14,10 @@ interface DispatchHistoryProps {
   history: DispatchEntry[];
   onDelete: (id: string) => void;
   onSave: (entry: DispatchEntry) => void;
+  onClearAll: () => void;
 }
 
-const DispatchHistory: React.FC<DispatchHistoryProps> = ({ history, onDelete, onSave }) => {
+const DispatchHistory: React.FC<DispatchHistoryProps> = ({ history, onDelete, onSave, onClearAll }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tempValues, setTempValues] = useState<DispatchEntry | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
@@ -129,9 +130,20 @@ const DispatchHistory: React.FC<DispatchHistoryProps> = ({ history, onDelete, on
   return (
     <div className="glass-card rounded-xl overflow-hidden flex flex-col border border-white/5 h-full">
       <div className="p-4 border-b border-white/5 flex items-center justify-between bg-black/20">
-        <div>
-          <h2 className="text-xs font-bold text-white tracking-widest uppercase">DISPATCH_HISTORY</h2>
-          <p className="text-[10px] text-slate-500 uppercase tracking-tighter">TELEMETRY_RECORD_SYNCED</p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h2 className="text-xs font-bold text-white tracking-widest uppercase">DISPATCH_HISTORY</h2>
+            <p className="text-[10px] text-slate-500 uppercase tracking-tighter">TELEMETRY_RECORD_SYNCED</p>
+          </div>
+          {history.length > 0 && (
+            <button 
+              onClick={onClearAll}
+              className="flex items-center gap-1 px-2 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded text-[9px] font-bold transition-colors uppercase"
+            >
+              <Trash2 size={10} />
+              CLEAR ALL
+            </button>
+          )}
         </div>
         
         <div className="flex items-center gap-2">

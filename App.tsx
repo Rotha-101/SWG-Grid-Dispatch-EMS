@@ -371,6 +371,12 @@ const App: React.FC = () => {
     setHistory(prev => prev.map(entry => entry.id === updatedEntry.id ? updatedEntry : entry));
   };
 
+  const handleClearAllHistory = () => {
+    if (window.confirm("CONFIRM_ACTION: Permanently delete ALL dispatch records?")) {
+      setHistory([]);
+    }
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -576,6 +582,7 @@ const App: React.FC = () => {
               history={history} 
               onDelete={handleDeleteHistory}
               onSave={handleSaveHistoryEntry}
+              onClearAll={handleClearAllHistory}
             />
           </div>
 
