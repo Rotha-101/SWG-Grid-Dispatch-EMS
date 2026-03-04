@@ -31,9 +31,17 @@ const SequenceLog: React.FC<SequenceLogProps> = ({ units, lastCommitTime, totalP
       year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' 
     });
 
-    const unitLines = activeUnits.map(u => `#${u.id}: P=${Math.round(u.activeMW)}MW, Q=${Math.round(u.reacMVAR)}Mvar, SOC=${u.soc.toFixed(0)}%`).join('\n');
+    const formatPQ = (val: number) => {
+      return String(Number(val.toFixed(3)));
+    };
+    const formatSOC = (val: number) => {
+      const rounded = Number(val.toFixed(3));
+      return Number.isInteger(rounded) ? rounded.toFixed(1) : String(rounded);
+    };
+
+    const unitLines = activeUnits.map(u => `#${u.id}: P=${formatPQ(u.activeMW)}MW, Q=${formatPQ(u.reacMVAR)}Mvar, SOC=${formatSOC(u.soc)}%`).join('\n');
     
-    const text = `START AT\nTIME: ${timeStr}\n\n${unitLines}\n\n#TOTAL: P=${totalP}MW, Q=${totalQ}Mvar`;
+    const text = `START AT\nTIME: ${timeStr}\n\n${unitLines}\n\n#TOTAL: P=${formatPQ(Number(totalP))}MW, Q=${formatPQ(Number(totalQ))}Mvar`;
     setLogContent(text);
   }, [units, lastCommitTime, totalP, totalQ]);
 
@@ -44,8 +52,15 @@ const SequenceLog: React.FC<SequenceLogProps> = ({ units, lastCommitTime, totalP
   const handleReset = () => {
     const activeUnits = units.filter(u => u.enabled !== false);
     const timeStr = lastCommitTime || "NONE";
-    const unitLines = activeUnits.map(u => `#${u.id}: P=${Math.round(u.activeMW)}MW, Q=${Math.round(u.reacMVAR)}Mvar, SOC=${u.soc.toFixed(0)}%`).join('\n');
-    setLogContent(`START AT\nTIME: ${timeStr}\n\n${unitLines}\n\n#TOTAL: P=${totalP}MW, Q=${totalQ}Mvar`);
+    const formatPQ = (val: number) => {
+      return String(Number(val.toFixed(3)));
+    };
+    const formatSOC = (val: number) => {
+      const rounded = Number(val.toFixed(3));
+      return Number.isInteger(rounded) ? rounded.toFixed(1) : String(rounded);
+    };
+    const unitLines = activeUnits.map(u => `#${u.id}: P=${formatPQ(u.activeMW)}MW, Q=${formatPQ(u.reacMVAR)}Mvar, SOC=${formatSOC(u.soc)}%`).join('\n');
+    setLogContent(`START AT\nTIME: ${timeStr}\n\n${unitLines}\n\n#TOTAL: P=${formatPQ(Number(totalP))}MW, Q=${formatPQ(Number(totalQ))}Mvar`);
   };
 
   return (
