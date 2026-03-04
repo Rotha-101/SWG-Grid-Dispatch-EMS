@@ -255,7 +255,11 @@ const App: React.FC = () => {
   };
 
   const handleTotalPUpdate = (val: any) => {
-    if (val === '' || val === '-' || val === '.' || val === '-.') { setTotalP(val); return; }
+    if (val === '' || val === '-' || val === '.' || val === '-.') { 
+      setTotalP(val); 
+      distributeTotalToUnits(0, Number(totalQ) || 0, swg3Enabled);
+      return; 
+    }
     let numericVal = parseFloat(val);
     if (!isNaN(numericVal)) {
       if (numericVal > 300) { setTotalP(300); numericVal = 300; }
@@ -266,7 +270,11 @@ const App: React.FC = () => {
   };
 
   const handleTotalQUpdate = (val: any) => {
-    if (val === '' || val === '-' || val === '.' || val === '-.') { setTotalQ(val); return; }
+    if (val === '' || val === '-' || val === '.' || val === '-.') { 
+      setTotalQ(val); 
+      distributeTotalToUnits(Number(totalP) || 0, 0, swg3Enabled);
+      return; 
+    }
     let numericVal = parseFloat(val);
     if (!isNaN(numericVal)) {
       if (numericVal > 300) { setTotalQ(300); numericVal = 300; }
@@ -277,7 +285,11 @@ const App: React.FC = () => {
   };
 
   const handleSocMinUpdate = (val: string) => {
-    if (val === '' || val === '.') { setSocMin(val); return; }
+    if (val === '' || val === '.') { 
+      setSocMin(val); 
+      distributeTotalToUnits(Number(totalP) || 0, Number(totalQ) || 0, swg3Enabled, units, 0, Number(socMax) || 0);
+      return; 
+    }
     const num = parseFloat(val);
     if (!isNaN(num)) {
       setSocMin(val);
@@ -286,7 +298,11 @@ const App: React.FC = () => {
   };
 
   const handleSocMaxUpdate = (val: string) => {
-    if (val === '' || val === '.') { setSocMax(val); return; }
+    if (val === '' || val === '.') { 
+      setSocMax(val); 
+      distributeTotalToUnits(Number(totalP) || 0, Number(totalQ) || 0, swg3Enabled, units, Number(socMin) || 0, 0);
+      return; 
+    }
     const num = parseFloat(val);
     if (!isNaN(num)) {
       setSocMax(val);
