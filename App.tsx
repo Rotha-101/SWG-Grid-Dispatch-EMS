@@ -24,9 +24,9 @@ const WEIGHTS: Record<string, number> = {
 };
 
 const INITIAL_UNITS: UnitData[] = [
-  { id: 'SWG01', name: 'SWG_UNIT_01', badgeColor: '#10b981', activeMW: 0, reacMVAR: 0, soc: 95, cRate: 0.435374, soh: 1.0, pLimit: 136, originalP: 0, limitedP: 0, enabled: true },
-  { id: 'SWG02', name: 'SWG_UNIT_02', badgeColor: '#8b5cf6', activeMW: 0, reacMVAR: 0, soc: 95, cRate: 0.272108, soh: 1.0, pLimit: 82, originalP: 0, limitedP: 0, enabled: true },
-  { id: 'SWG03', name: 'SWG_UNIT_03', badgeColor: '#f59e0b', activeMW: 0, reacMVAR: 0, soc: 95, cRate: 0.292517, soh: 1.0, pLimit: 82, originalP: 0, limitedP: 0, enabled: true },
+  { id: 'SWG01', name: 'SWG_UNIT_01', badgeColor: '#10b981', activeMW: 0, reacMVAR: 0, soc: 95, cRate: 0.435374, soh: 1.0, pLimit: 136, qLimit: 150, originalP: 0, limitedP: 0, enabled: true },
+  { id: 'SWG02', name: 'SWG_UNIT_02', badgeColor: '#8b5cf6', activeMW: 0, reacMVAR: 0, soc: 95, cRate: 0.272108, soh: 1.0, pLimit: 82, qLimit: 75, originalP: 0, limitedP: 0, enabled: true },
+  { id: 'SWG03', name: 'SWG_UNIT_03', badgeColor: '#f59e0b', activeMW: 0, reacMVAR: 0, soc: 95, cRate: 0.292517, soh: 1.0, pLimit: 82, qLimit: 75, originalP: 0, limitedP: 0, enabled: true },
 ];
 
 const App: React.FC = () => {
@@ -315,18 +315,19 @@ const App: React.FC = () => {
     let nextUnits: UnitData[] = [];
     setUnits(prev => {
       nextUnits = prev.map(u => {
-        if (u.id === 'SWG03') return { ...u, enabled: newState };
+        if (u.id === 'SWG03') return { ...u, enabled: newState, pLimit: 82, qLimit: 75 };
         if (!newState) {
-          if (u.id === 'SWG01' || u.id === 'SWG02') return { ...u, cRate: 0.5 };
+          if (u.id === 'SWG01') return { ...u, cRate: 0.5, pLimit: 150, qLimit: 150 };
+          if (u.id === 'SWG02') return { ...u, cRate: 0.5, pLimit: 150, qLimit: 150 };
         } else {
-          if (u.id === 'SWG01') return { ...u, cRate: 0.435374 };
-          if (u.id === 'SWG02') return { ...u, cRate: 0.272108 };
+          if (u.id === 'SWG01') return { ...u, cRate: 0.435374, pLimit: 136, qLimit: 150 };
+          if (u.id === 'SWG02') return { ...u, cRate: 0.272108, pLimit: 82, qLimit: 75 };
         }
         return u;
       });
       return nextUnits;
     });
-    setTimeout(() => distributeTotalToUnits(Number(totalP) || 0, Number(totalQ) || 0, newState, nextUnits, socMin, socMax), 0);
+    setTimeout(() => distributeTotalToUnits(Number(totalP) || 0, Number(totalQ) || 0, newState, nextUnits, Number(socMin) || 0, Number(socMax) || 0), 0);
   };
 
   const handleUnitUpdate = (id: string, field: keyof UnitData, value: number) => {
@@ -425,6 +426,91 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [commitSequence]);
 
+  const getTotalAvailDischP = () => {
+    return units.reduce((sum, u) => sum + (u.enabled !== false && u.soc > Number(socMin) ? u.pLimit - Math.max(0, u.limitedP) : 0), 0);
+  };
+
+  const getTotalAvailChgP = () => {
+    return units.reduce((sum, u) => sum + (u.enabled !== false && u.soc < Number(socMax) ? u.pLimit - Math.max(0, -u.limitedP) : 0), 0);
+  };
+
+  const getTotalAvailQ = () => {
+    return units.reduce((sum, u) => sum + (u.enabled !== false ? u.qLimit - Math.abs(u.reacMVAR) : 0), 0);
+  };
+
+  const getUnitAvailDischP = (u: UnitData) => {
+    if (u.enabled === false) return 0;
+    if (u.soc <= Number(socMin)) return 0;
+    
+    let totalWeight = 0;
+    let unitWeight = 0;
+    units.forEach(unit => {
+      if (unit.enabled !== false && unit.soc > Number(socMin)) {
+        const w = (unit.soc - Number(socMin)) * unit.soh * unit.cRate;
+        totalWeight += w;
+        if (unit.id === u.id) unitWeight = w;
+      }
+    });
+    
+    if (totalWeight === 0) {
+      units.forEach(unit => {
+        if (unit.enabled !== false) {
+          const w = unit.cRate;
+          totalWeight += w;
+          if (unit.id === u.id) unitWeight = w;
+        }
+      });
+    }
+    
+    const totalAvail = getTotalAvailDischP();
+    return totalWeight > 0 ? totalAvail * (unitWeight / totalWeight) : 0;
+  };
+
+  const getUnitAvailChgP = (u: UnitData) => {
+    if (u.enabled === false) return 0;
+    if (u.soc >= Number(socMax)) return 0;
+    
+    let totalWeight = 0;
+    let unitWeight = 0;
+    units.forEach(unit => {
+      if (unit.enabled !== false && unit.soc < Number(socMax)) {
+        const w = (Number(socMax) - unit.soc) * unit.soh * unit.cRate;
+        totalWeight += w;
+        if (unit.id === u.id) unitWeight = w;
+      }
+    });
+    
+    if (totalWeight === 0) {
+      units.forEach(unit => {
+        if (unit.enabled !== false) {
+          const w = unit.cRate;
+          totalWeight += w;
+          if (unit.id === u.id) unitWeight = w;
+        }
+      });
+    }
+    
+    const totalAvail = getTotalAvailChgP();
+    return totalWeight > 0 ? totalAvail * (unitWeight / totalWeight) : 0;
+  };
+
+  const getUnitAvailQ = (u: UnitData) => {
+    if (u.enabled === false) return 0;
+    
+    const totalAvail = getTotalAvailQ();
+    
+    if (swg3Enabled) {
+      if (u.id === 'SWG01') return totalAvail * 0.50;
+      if (u.id === 'SWG02') return totalAvail * 0.25;
+      if (u.id === 'SWG03') return totalAvail * 0.25;
+    } else {
+      if (u.id === 'SWG01') return totalAvail * 0.50;
+      if (u.id === 'SWG02') return totalAvail * 0.50;
+      if (u.id === 'SWG03') return 0;
+    }
+    return 0;
+  };
+
   return (
     <div className="min-h-screen bg-[#06070a] flex flex-col text-slate-300">
       <Header onStoreClick={commitSequence} historyCount={history.length} isOnline={isOnline} />
@@ -444,10 +530,10 @@ const App: React.FC = () => {
                 <Zap className="text-blue-500" size={18} />
               </div>
               <div>
-                <h2 className="text-xs font-bold text-white tracking-widest uppercase">TOTAL_DISPATCH_SETPOINT</h2>
-                <p className="text-[9px] text-slate-500 uppercase font-mono-custom">
-                  {Number(totalP) > 0 ? 'DISCHARGE_MODE' : Number(totalP) < 0 ? 'CHARGE_MODE' : 'IDLE_MODE'}
-                </p>
+                <h2 className="text-xs font-bold text-white tracking-widest uppercase mb-1">TOTAL_DISPATCH_SETPOINT</h2>
+                <div className={`inline-block px-2 py-0.5 rounded text-[9px] font-bold tracking-widest uppercase border ${Number(totalP) > 0 ? 'bg-blue-500/20 text-blue-400 border-blue-500/50' : Number(totalP) < 0 ? 'bg-purple-500/20 text-purple-400 border-purple-500/50' : 'bg-slate-500/20 text-slate-400 border-slate-500/50'}`}>
+                  {Number(totalP) > 0 ? 'DISCHARGE MODE' : Number(totalP) < 0 ? 'CHARGE MODE' : 'IDLE MODE'}
+                </div>
               </div>
             </div>
 
@@ -553,25 +639,48 @@ const App: React.FC = () => {
 
         {/* ALLOCATION RESULTS PANEL */}
         <div className="glass-card rounded-xl p-6 border-l-4 border-l-emerald-500">
-          <h2 className="text-sm font-bold text-white tracking-widest uppercase mb-4">BESS ALLOCATION RESULTS</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-sm font-bold text-white tracking-widest uppercase">BESS ALLOCATION RESULTS</h2>
+            <div className={`px-4 py-1 rounded-full text-xs font-bold tracking-widest uppercase border ${Number(totalP) > 0 ? 'bg-blue-500/20 text-blue-400 border-blue-500/50' : Number(totalP) < 0 ? 'bg-purple-500/20 text-purple-400 border-purple-500/50' : 'bg-slate-500/20 text-slate-400 border-slate-500/50'}`}>
+              {Number(totalP) > 0 ? 'DISCHARGE MODE' : Number(totalP) < 0 ? 'CHARGE MODE' : 'IDLE MODE'}
+            </div>
+          </div>
           
-          <div className="flex gap-8 mb-6">
-            <div>
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
+            <div className="bg-black/20 p-3 rounded-lg border border-white/5">
               <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">TOTAL ACTIVE POWER</p>
-              <p className="text-2xl font-mono-custom font-bold text-emerald-400">
+              <p className="text-xl font-mono-custom font-bold text-emerald-400">
                 {units.reduce((sum, u) => sum + (u.enabled !== false ? u.limitedP : 0), 0)} MW
               </p>
             </div>
-            <div>
+            <div className="bg-black/20 p-3 rounded-lg border border-white/5">
               <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">TOTAL REACTIVE POWER</p>
-              <p className="text-2xl font-mono-custom font-bold text-cyan-400">
+              <p className="text-xl font-mono-custom font-bold text-cyan-400">
                 {units.reduce((sum, u) => sum + (u.enabled !== false ? u.reacMVAR : 0), 0)} MVAR
               </p>
             </div>
-            <div>
+            <div className="bg-black/20 p-3 rounded-lg border border-white/5">
               <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">POWER BALANCE</p>
-              <p className={`text-2xl font-mono-custom font-bold ${units.reduce((sum, u) => sum + (u.enabled !== false ? u.limitedP : 0), 0) === Number(totalP) ? 'text-emerald-400' : 'text-red-500'}`}>
+              <p className={`text-xl font-mono-custom font-bold ${units.reduce((sum, u) => sum + (u.enabled !== false ? u.limitedP : 0), 0) === Number(totalP) ? 'text-emerald-400' : 'text-red-500'}`}>
                 {units.reduce((sum, u) => sum + (u.enabled !== false ? u.limitedP : 0), 0) === Number(totalP) ? 'EXACT' : 'NOT EXACT'}
+              </p>
+            </div>
+            <div className="bg-black/20 p-3 rounded-lg border border-white/5">
+              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">AVAIL. DISCHARGE (P)</p>
+              <p className="text-xl font-mono-custom font-bold text-blue-400">
+                {getTotalAvailDischP().toFixed(2)} MW
+              </p>
+            </div>
+            <div className="bg-black/20 p-3 rounded-lg border border-white/5">
+              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">AVAIL. CHARGE (P)</p>
+              <p className="text-xl font-mono-custom font-bold text-purple-400">
+                {getTotalAvailChgP().toFixed(2)} MW
+              </p>
+            </div>
+            <div className="bg-black/20 p-3 rounded-lg border border-white/5">
+              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">AVAIL. REACTIVE (Q)</p>
+              <p className="text-xl font-mono-custom font-bold text-indigo-400">
+                {getTotalAvailQ().toFixed(2)} MVAR
               </p>
             </div>
           </div>
@@ -586,6 +695,9 @@ const App: React.FC = () => {
                   <th className="py-2 px-4 text-right">P Limit (MW)</th>
                   <th className="py-2 px-4 text-right">Δ (Limited - Original)</th>
                   <th className="py-2 px-4 text-right">Q (MVAR)</th>
+                  <th className="py-2 px-4 text-right">Avail. Disch. P</th>
+                  <th className="py-2 px-4 text-right">Avail. Chg. P</th>
+                  <th className="py-2 px-4 text-right">Avail. Q</th>
                 </tr>
               </thead>
               <tbody className="font-mono-custom text-sm">
@@ -599,6 +711,9 @@ const App: React.FC = () => {
                       {(u.limitedP - u.originalP).toFixed(2)}
                     </td>
                     <td className="py-2 px-4 text-right text-cyan-400 font-bold">{u.reacMVAR}</td>
+                    <td className="py-2 px-4 text-right text-blue-400">{getUnitAvailDischP(u).toFixed(2)}</td>
+                    <td className="py-2 px-4 text-right text-purple-400">{getUnitAvailChgP(u).toFixed(2)}</td>
+                    <td className="py-2 px-4 text-right text-indigo-400">{getUnitAvailQ(u).toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>

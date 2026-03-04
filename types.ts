@@ -9,6 +9,7 @@ export interface UnitData {
   cRate: number;
   soh: number;
   pLimit: number;
+  qLimit: number;
   originalP: number;
   limitedP: number;
   enabled?: boolean;
