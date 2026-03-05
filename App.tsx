@@ -427,11 +427,12 @@ const App: React.FC = () => {
   }, [commitSequence]);
 
   const getTotalAvailDischP = () => {
-    return units.reduce((sum, u) => sum + (u.enabled !== false && u.soc > Number(socMin) ? u.pLimit - Math.max(0, u.limitedP) : 0), 0);
+    return units.reduce((sum, u) => sum + (u.enabled !== false && u.soc >= Number(socMin) ? u.pLimit - Math.max(0, u.limitedP) : 0), 0);
   };
 
   const getTotalAvailChgP = () => {
-    return units.reduce((sum, u) => sum + (u.enabled !== false && u.soc < Number(socMax) ? u.pLimit - Math.max(0, -u.limitedP) : 0), 0);
+    const val = units.reduce((sum, u) => sum + (u.enabled !== false && u.soc <= Number(socMax) ? u.pLimit - Math.max(0, -u.limitedP) : 0), 0);
+    return val > 0 ? -val : 0;
   };
 
   const getTotalAvailQ = () => {
@@ -440,12 +441,12 @@ const App: React.FC = () => {
 
   const getUnitAvailDischP = (u: UnitData) => {
     if (u.enabled === false) return 0;
-    if (u.soc <= Number(socMin)) return 0;
+    if (u.soc < Number(socMin)) return 0;
     
     let totalWeight = 0;
     let unitWeight = 0;
     units.forEach(unit => {
-      if (unit.enabled !== false && unit.soc > Number(socMin)) {
+      if (unit.enabled !== false && unit.soc >= Number(socMin)) {
         const w = (unit.soc - Number(socMin)) * unit.soh * unit.cRate;
         totalWeight += w;
         if (unit.id === u.id) unitWeight = w;
@@ -463,17 +464,18 @@ const App: React.FC = () => {
     }
     
     const totalAvail = getTotalAvailDischP();
-    return totalWeight > 0 ? totalAvail * (unitWeight / totalWeight) : 0;
+    const val = totalWeight > 0 ? totalAvail * (unitWeight / totalWeight) : 0;
+    return val === 0 ? 0 : val;
   };
 
   const getUnitAvailChgP = (u: UnitData) => {
     if (u.enabled === false) return 0;
-    if (u.soc >= Number(socMax)) return 0;
+    if (u.soc > Number(socMax)) return 0;
     
     let totalWeight = 0;
     let unitWeight = 0;
     units.forEach(unit => {
-      if (unit.enabled !== false && unit.soc < Number(socMax)) {
+      if (unit.enabled !== false && unit.soc <= Number(socMax)) {
         const w = (Number(socMax) - unit.soc) * unit.soh * unit.cRate;
         totalWeight += w;
         if (unit.id === u.id) unitWeight = w;
@@ -491,7 +493,8 @@ const App: React.FC = () => {
     }
     
     const totalAvail = getTotalAvailChgP();
-    return totalWeight > 0 ? totalAvail * (unitWeight / totalWeight) : 0;
+    const val = totalWeight > 0 ? totalAvail * (unitWeight / totalWeight) : 0;
+    return val === 0 ? 0 : val;
   };
 
   const getUnitAvailQ = (u: UnitData) => {
